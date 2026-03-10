@@ -33,7 +33,7 @@ ALLOWED_EXTENSIONS = [
 ]
 
 def extract_conserved(alignment_file_path: str) -> str:
-    alignment = AlignIO.read(alignment_file_path, "fasta")
+    alignment = AlignIO.read(alignment_file_path, "mas")
     alignment_length = alignment.get_alignment_length()
 
     conserved_indices = [
