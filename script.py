@@ -12,7 +12,6 @@ from typing import List
 
 app = FastAPI()
 
-# Allow frontend from any origin (adjust for production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,34 +19,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Allowed extensions
 ALLOWED_EXTENSIONS = [
-    "fa", "fasta", "clustal", "clu", "phy", "phylip", "sto", "stockholm"
+    "fa",
+    "fas",
+    "fasta",
+    "mas",
+    "clustal",
+    "clu",
+    "phy",
+    "phylip",
+    "sto",
+    "stockholm"
 ]
 
 def extract_conserved(alignment_file_path: str) -> str:
-    """Extract conserved regions from an alignment file and save a new FASTA file."""
     alignment = AlignIO.read(alignment_file_path, "fasta")
     alignment_length = alignment.get_alignment_length()
 
-    # Identify conserved positions
     conserved_indices = [
         i for i in range(alignment_length)
         if all(record.seq[i] == alignment[0].seq[i] for record in alignment)
     ]
 
-    # Build new records
     records = [
-        SeqRecord(Seq(''.join([record.seq[i] for i in conserved_indices])), id=record.id, description="")
+        SeqRecord(
+            Seq("".join([record.seq[i] for i in conserved_indices])),
+            id=record.id,
+            description=""
+        )
         for record in alignment
     ]
 
     alignment_conserved = MultipleSeqAlignment(records)
 
     base_name = os.path.splitext(os.path.basename(alignment_file_path))[0]
-    output_file = os.path.join(tempfile.gettempdir(), f"{base_name}_conserved.fasta")
+    output_file = os.path.join(
+        tempfile.gettempdir(),
+        f"{base_name}_conserved.fasta"
+    )
+
     AlignIO.write(alignment_conserved, output_file, "fasta")
     return output_file
+
 
 @app.post("/upload/")
 async def upload_files(files: List[UploadFile] = File(...)):
@@ -57,12 +70,16 @@ async def upload_files(files: List[UploadFile] = File(...)):
     processed_files = []
 
     for uploaded_file in files:
-        ext = uploaded_file.filename.split('.')[-1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            continue  # skip unsupported files
+        ext = uploaded_file.filename.split(".")[-1].lower()
 
-        # Save to temporary file
-        temp_file_path = os.path.join(tempfile.gettempdir(), uploaded_file.filename)
+        if ext not in ALLOWED_EXTENSIONS:
+            continue
+
+        temp_file_path = os.path.join(
+            tempfile.gettempdir(),
+            uploaded_file.filename
+        )
+
         with open(temp_file_path, "wb") as f:
             f.write(await uploaded_file.read())
 
@@ -76,14 +93,22 @@ async def upload_files(files: List[UploadFile] = File(...)):
     if not processed_files:
         return {"error": "No valid files processed."}
 
-    # If only one file, return it directly
     if len(processed_files) == 1:
-        return FileResponse(processed_files[0], filename=os.path.basename(processed_files[0]))
+        return FileResponse(
+            processed_files[0],
+            filename=os.path.basename(processed_files[0])
+        )
 
-    # If multiple files, zip them
-    zip_path = os.path.join(tempfile.gettempdir(), "conserved_alignments.zip")
-    with zipfile.ZipFile(zip_path, 'w') as zipf:
+    zip_path = os.path.join(
+        tempfile.gettempdir(),
+        "conserved_alignments.zip"
+    )
+
+    with zipfile.ZipFile(zip_path, "w") as zipf:
         for file in processed_files:
             zipf.write(file, os.path.basename(file))
 
-    return FileResponse(zip_path, filename="conserved_alignments.zip")
+    return FileResponse(
+        zip_path,
+        filename="conserved_alignments.zip"
+    )
