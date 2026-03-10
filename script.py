@@ -19,46 +19,61 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALLOWED_EXTENSIONS = [
-    "fa",
-    "fas",
-    "fasta",
-    "mas",
-    "clustal",
-    "clu",
-    "phy",
-    "phylip",
-    "sto",
-    "stockholm"
-]
+EXT_FORMAT_MAP = {
+    "fa": "fasta",
+    "fas": "fasta",
+    "fasta": "fasta",
+    "mas": "fasta",
+    "clustal": "clustal",
+    "clu": "clustal",
+    "phy": "phylip",
+    "phylip": "phylip",
+    "sto": "stockholm",
+    "stockholm": "stockholm",
+}
+
+def detect_alignment_format(file_path: str):
+    for fmt in set(EXT_FORMAT_MAP.values()):
+        try:
+            alignment = AlignIO.read(file_path, fmt)
+            return alignment
+        except:
+            pass
+    raise ValueError("Unsupported or invalid alignment format")
 
 def extract_conserved(alignment_file_path: str) -> str:
-    alignment = AlignIO.read(alignment_file_path, "mas")
+    alignment = detect_alignment_format(alignment_file_path)
     alignment_length = alignment.get_alignment_length()
 
-    conserved_indices = [
-        i for i in range(alignment_length)
-        if all(record.seq[i] == alignment[0].seq[i] for record in alignment)
-    ]
+    conserved_indices = []
+    for i in range(alignment_length):
+        column = [record.seq[i] for record in alignment]
+        first = column[0]
+        if first != "-" and all(base == first for base in column):
+            conserved_indices.append(i)
 
-    records = [
-        SeqRecord(
-            Seq("".join([record.seq[i] for i in conserved_indices])),
-            id=record.id,
-            description=""
+    records = []
+    for record in alignment:
+        conserved_seq = "".join([record.seq[i] for i in conserved_indices])
+        records.append(
+            SeqRecord(
+                Seq(conserved_seq),
+                id=record.id,
+                description=""
+            )
         )
-        for record in alignment
-    ]
 
     alignment_conserved = MultipleSeqAlignment(records)
 
     base_name = os.path.splitext(os.path.basename(alignment_file_path))[0]
+
     output_file = os.path.join(
         tempfile.gettempdir(),
         f"{base_name}_conserved.fasta"
     )
 
     AlignIO.write(alignment_conserved, output_file, "fasta")
+
     return output_file
 
 
@@ -72,7 +87,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
     for uploaded_file in files:
         ext = uploaded_file.filename.split(".")[-1].lower()
 
-        if ext not in ALLOWED_EXTENSIONS:
+        if ext not in EXT_FORMAT_MAP:
             continue
 
         temp_file_path = os.path.join(
@@ -86,8 +101,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
         try:
             output_file = extract_conserved(temp_file_path)
             processed_files.append(output_file)
-        except Exception as e:
-            print(f"Error processing {uploaded_file.filename}: {e}")
+        except:
             continue
 
     if not processed_files:
